@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AZEEM's PDF Viewers UR</title>
+    <!-- Tailwind CSS for Modern Styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- PDF.js for Viewing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+    <!-- pdf-lib for combining/manipulating pages -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+    <!-- Marked.js for rendering Gemini Markdown output -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.2/marked.min.js"></script>
+
+    <script>
+        // Configure Tailwind Colors
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#1e293b',
+                        secondary: '#334155',
+                        accent: '#10b981' // Green
+                    }
+                }
+            }
+        }
+        // Set PDF.js worker source
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+    </script>
+    <style>
+        /* Custom scrollbar for a modern look */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .pdf-canvas-container { box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); }
+    </style>
+</head>
+<body class="bg-gray-50 h-screen flex flex-col font-sans overflow-hidden">
+
+    <!-- Header -->
+    <header class="bg-primary text-white p-4 flex justify-between items-center shadow-md z-10 shrink-0">
+        <div class="flex items-center gap-3">
+            <i class="fa-solid fa-book-open-reader text-2xl text-accent"></i>
+            <h1 class="text-xl font-bold tracking-wide">AZEEM's PDF Viewers UR</h1>
+        </div>
+        <div class="flex items-center gap-4">
+            <div class="flex items-center gap-2 bg-secondary rounded-lg px-3 py-1">
+                <i class="fa-solid fa-key text-gray-400"></i>
+                <input type="password" id="apiKeyInput" placeholder="Enter Gemini API Key..." 
+                       class="bg-transparent border-none outline-none text-sm text-white placeholder-gray-400 w-64">
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Layout -->
+    <div class="flex flex-1 overflow-hidden">
+        
+        <!-- Left Sidebar: Document Controls -->
+        <aside class="w-80 bg-white border-r border-gray-200 flex flex-col shadow-[2px_0_5px_rgba(0,0,0,0.02)] z-0 shrink-0">
+            <div class="p-5 border-b border-gray-100">
+                <h2 class="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4">Attach Document</h2>
+                
+                <!-- Upload Buttons -->
+                <div class="space-y-3">
+                    <label class="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer transition-colors group">
+                        <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                            <i class="fa-solid fa-laptop"></i>
+                        </div>
+                        <span class="text-sm font-medium text-gray-700">Local PC</span>
+                        <input type="file" id="fileInput" accept=".pdf" class="hidden" onchange="handleFileUpload(event)">
+                    </label>
+                    
+                    <button onclick="alert('Google Drive API configuration required. Please use Local PC upload for this demo.')" class="w-full flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors group text-left">
+                        <div class="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-600 group-hover:bg-green-600 group-hover:text-white transition-colors">
+                            <i class="fa-brands fa-google-drive"></i>
+                        </div>
+                        <span class="text-sm font-medium text-gray-700">Google Drive</span>
+                    </button>
+                    
+                    <button onclick="alert('OneDrive API configuration required. Please use Local PC upload for this demo.')" class="w-full flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors group text-left">
+                        <div class="w-8 h-8 rounded-full bg-sky-100 flex items-center justify-center text-sky-600 group-hover:bg-sky-600 group-hover:text-white transition-colors">
+                            <i class="fa-brands fa-windows"></i>
+                        </div>
+                        <span class="text-sm font-medium text-gray-700">OneDrive</span>
+                    </button>
+                </div>
+
+                <!-- Status & Progress -->
+                <div class="mt-6" id="uploadStatusContainer" style="display: none;">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs font-semibold text-gray-600" id="fileNameDisplay">document.pdf</span>
+                        <!-- Indications Button -->
+                        <div id="statusIndicator" class="flex items-center gap-1 px-2 py-1 rounded-full bg-gray-200 text-gray-600 text-[10px] font-bold uppercase transition-colors duration-300">
+                            <div class="w-2 h-2 rounded-full bg-gray-500" id="statusDot"></div>
+                            <span id="statusText">Waiting</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Progress Bar -->
+                    <div class="w-full bg-gray-200 rounded-full h-5 relative overflow-hidden">
+                        <div id="progressBar" class="bg-green-500 h-5 rounded-full flex items-center justify-center transition-all duration-300 w-0">
+                            <span id="progressText" class="text-white text-xs font-bold absolute w-full text-center drop-shadow-md">0%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PDF Manipulation Tools -->
+            <div class="p-5 flex-1 overflow-y-auto" id="manipulationTools" style="opacity: 0.5; pointer-events: none;">
+                <h2 class="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4">Split & Combine</h2>
+                <p class="text-xs text-gray-500 mb-3">Extract specific pages to create a new PDF. Example: 1, 5, 8-10</p>
+                
+                <input type="text" id="pageSelectionInput" placeholder="e.g. 1, 5" class="w-full border border-gray-300 rounded-md p-2 text-sm mb-3 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent">
+                
+                <button onclick="combineAndDownloadPDF()" class="w-full bg-primary hover:bg-secondary text-white text-sm font-medium py-2 px-4 rounded-md transition-colors flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-file-export"></i> Export Selected Pages
+                </button>
+            </div>
+        </aside>
+
+        <!-- Center: PDF Viewer -->
+        <main class="flex-1 bg-gray-100 flex flex-col relative">
+            <!-- Viewer Controls -->
+            <div class="h-12 bg-white border-b border-gray-200 flex items-center justify-between px-4 shrink-0 shadow-sm z-10">
+                <div class="flex items-center gap-4">
+                    <button onclick="prevPage()" class="p-1.5 rounded hover:bg-gray-100 text-gray-600 transition-colors" title="Previous Page">
+                        <i class="fa-solid fa-chevron-left"></i>
+                    </button>
+                    <span class="text-sm font-medium text-gray-700">Page <span id="pageNum">0</span> of <span id="pageCount">0</span></span>
+                    <button onclick="nextPage()" class="p-1.5 rounded hover:bg-gray-100 text-gray-600 transition-colors" title="Next Page">
+                        <i class="fa-solid fa-chevron-right"></i>
+                    </button>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="zoomOut()" class="p-1.5 rounded hover:bg-gray-100 text-gray-600 transition-colors"><i class="fa-solid fa-magnifying-glass-minus"></i></button>
+                    <span id="zoomLevel" class="text-sm font-medium text-gray-700 w-12 text-center">100%</span>
+                    <button onclick="zoomIn()" class="p-1.5 rounded hover:bg-gray-100 text-gray-600 transition-colors"><i class="fa-solid fa-magnifying-glass-plus"></i></button>
+                </div>
+            </div>
+            
+            <!-- Canvas Container -->
+            <div class="flex-1 overflow-auto p-6 flex justify-center bg-[#e5e7eb]" id="pdfContainer">
+                <div class="relative bg-white pdf-canvas-container rounded-sm" id="canvasWrapper">
+                    <!-- Placeholder before upload -->
+                    <div id="pdfPlaceholder" class="h-full min-h-[600px] w-[450px] flex flex-col items-center justify-center text-gray-400">
+                        <i class="fa-regular fa-file-pdf text-6xl mb-4 text-gray-300"></i>
+                        <p class="text-sm font-medium">Upload a PDF to view</p>
+                    </div>
+                    <canvas id="pdfCanvas" class="hidden max-w-full"></canvas>
+                </div>
+            </div>
+        </main>
+
+        <!-- Right Sidebar: Chatbot (Notebook LLM) -->
+        <aside class="w-96 bg-white border-l border-gray-200 flex flex-col shadow-[-2px_0_5px_rgba(0,0,0,0.02)] z-0 shrink-0">
+            <!-- Chat Header -->
+            <div class="p-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 rounded-full bg-accent flex items-center justify-center text-white">
+                        <i class="fa-solid fa-robot"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-sm font-bold text-gray-800">AI Translator</h2>
+                        <p class="text-[10px] text-gray-500">Gemini 2.5 Flash Model</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chat Messages -->
+            <div id="chatMessages" class="flex-1 overflow-y-auto p-4 space-y-4 bg-white">
+                <!-- Welcome Message -->
+                <div class="flex gap-3">
+                    <div class="w-6 h-6 rounded-full bg-accent shrink-0 flex items-center justify-center text-white text-xs mt-1">
+                        <i class="fa-solid fa-robot"></i>
+                    </div>
+                    <div class="bg-gray-100 rounded-lg rounded-tl-none p-3 text-sm text-gray-800 max-w-[85%]">
+                        Hello! Upload a PDF, and I can translate its contents into Pakistani Urdu, summarize it, extract key points, or even generate a quiz for you. Just click the action buttons below or ask me a specific question!
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chat Input Area -->
+            <div class="p-4 bg-gray-50 border-t border-gray-200 flex flex-col gap-2">
+                <div class="grid grid-cols-2 gap-2 mb-2">
+                    <button onclick="translateFullDocument()" id="translateBtn" class="bg-accent hover:bg-green-600 text-white text-xs font-bold py-2 px-2 rounded-md transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1" disabled>
+                        ✨ Urdu Translation
+                    </button>
+                    <button onclick="summarizeDocument()" id="summarizeBtn" class="bg-blue-500 hover:bg-blue-600 text-white text-xs font-bold py-2 px-2 rounded-md transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1" disabled>
+                        ✨ Summarize
+                    </button>
+                    <button onclick="extractKeyPoints()" id="keyPointsBtn" class="bg-purple-500 hover:bg-purple-600 text-white text-xs font-bold py-2 px-2 rounded-md transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1" disabled>
+                        ✨ Key Points
+                    </button>
+                    <button onclick="generateQuiz()" id="quizBtn" class="bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold py-2 px-2 rounded-md transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1" disabled>
+                        ✨ Generate Quiz
+                    </button>
+                </div>
+                
+                <div class="relative">
+                    <textarea id="chatInput" rows="2" placeholder="Ask about the document or request specific translation..." class="w-full border border-gray-300 rounded-lg p-3 pr-10 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent resize-none disabled:bg-gray-100" disabled></textarea>
+                    <button onclick="sendChatMessage()" id="sendBtn" class="absolute right-2 bottom-2 w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center hover:bg-secondary transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                        <i class="fa-solid fa-paper-plane text-xs"></i>
+                    </button>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <script>
+        // --- State Variables ---
+        let pdfDoc = null;
+        let pageNum = 1;
+        let pageRendering = false;
+        let pageNumPending = null;
+        let scale = 1.2;
+        let canvas = document.getElementById('pdfCanvas');
+        let ctx = canvas.getContext('2d');
+        let currentArrayBuffer = null;
+        let fullPdfText = ""; // Holds extracted text for Gemini
+        let originalFileName = "";
+
+        // --- File Upload & Progress Handling ---
+        async function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            if (file.type !== 'application/pdf') {
+                alert('Please upload a valid PDF file.');
+                return;
+            }
+
+            originalFileName = file.name;
+            document.getElementById('fileNameDisplay').innerText = originalFileName;
+            
+            // UI Resets
+            document.getElementById('uploadStatusContainer').style.display = 'block';
+            const progressText = document.getElementById('progressText');
+            const progressBar = document.getElementById('progressBar');
+            const statusIndicator = document.getElementById('statusIndicator');
+            const statusDot = document.getElementById('statusDot');
+            const statusText = document.getElementById('statusText');
+            
+            progressBar.style.width = '0%';
+            progressText.innerText = '0%';
+            
+            statusIndicator.className = 'flex items-center gap-1 px-2 py-1 rounded-full bg-yellow-100 text-yellow-700 text-[10px] font-bold uppercase transition-colors duration-300';
+            statusDot.className = 'w-2 h-2 rounded-full bg-yellow-500 animate-pulse';
+            statusText.innerText = 'Uploading';
+
+            // Simulate upload progress for UI requirement (since local read is instantaneous)
+            let progress = 0;
+            const progressInterval = setInterval(() => {
+                progress += Math.floor(Math.random() * 15) + 5;
+                if (progress > 90) progress = 90; // Hold at 90% until processing is done
+                
+                progressBar.style.width = `${progress}%`;
+                progressText.innerText = `${progress}%`;
+            }, 200);
+
+            try {
+                // Read File
+                const arrayBuffer = await file.arrayBuffer();
+                currentArrayBuffer = arrayBuffer; // Store for manipulation
+
+                // Finish Progress Bar
+                clearInterval(progressInterval);
+                progressBar.style.width = '100%';
+                progressText.innerText = '100%';
+                
+                // Update Indication Button to Green as requested
+                setTimeout(() => {
+                    statusIndicator.className = 'flex items-center gap-1 px-2 py-1 rounded-full bg-green-100 text-green-700 text-[10px] font-bold uppercase transition-colors duration-300 shadow-sm';
+                    statusDot.className = 'w-2 h-2 rounded-full bg-green-500';
+                    statusDot.classList.remove('animate-pulse');
+                    statusText.innerText = 'Done';
+                    
+                    // Enable tools
+                    document.getElementById('manipulationTools').style.opacity = '1';
+                    document.getElementById('manipulationTools').style.pointerEvents = 'auto';
+                    document.getElementById('translateBtn').disabled = false;
+                    document.getElementById('summarizeBtn').disabled = false;
+                    document.getElementById('keyPointsBtn').disabled = false;
+                    document.getElementById('quizBtn').disabled = false;
+                    document.getElementById('chatInput').disabled = false;
+                    document.getElementById('sendBtn').disabled = false;
+                }, 400);
+
+                // Load and Render PDF
+                document.getElementById('pdfPlaceholder').style.display = 'none';
+                canvas.classList.remove('hidden');
+                
+                const loadingTask = pdfjsLib.getDocument({data: arrayBuffer});
+                pdfDoc = await loadingTask.promise;
+                document.getElementById('pageCount').textContent = pdfDoc.numPages;
+                
+                pageNum = 1;
+                renderPage(pageNum);
+                
+                // Extract Text for Gemini in the background
+                extractTextFromPDF();
+
+            } catch (error) {
+                clearInterval(progressInterval);
+                console.error("Error loading PDF: ", error);
+                alert("Failed to load PDF.");
+                
+                statusIndicator.className = 'flex items-center gap-1 px-2 py-1 rounded-full bg-red-100 text-red-700 text-[10px] font-bold uppercase transition-colors duration-300';
+                statusDot.className = 'w-2 h-2 rounded-full bg-red-500';
+                statusText.innerText = 'Error';
+            }
+        }
+
+        // --- PDF Rendering Functions ---
+        function renderPage(num) {
+            pageRendering = true;
+            pdfDoc.getPage(num).then(function(page) {
+                const viewport = page.getViewport({scale: scale});
+                canvas.height = viewport.height;
+                canvas.width = viewport.width;
+
+                const renderContext = {
+                    canvasContext: ctx,
+                    viewport: viewport
+                };
+                const renderTask = page.render(renderContext);
+
+                renderTask.promise.then(function() {
+                    pageRendering = false;
+                    if (pageNumPending !== null) {
+                        renderPage(pageNumPending);
+                        pageNumPending = null;
+                    }
+                });
+            });
+            document.getElementById('pageNum').textContent = num;
+        }
+
+        function queueRenderPage(num) {
+            if (pageRendering) {
+                pageNumPending = num;
+            } else {
+                renderPage(num);
+            }
+        }
+
+        function prevPage() {
+            if (pageNum <= 1) return;
+            pageNum--;
+            queueRenderPage(pageNum);
+        }
+
+        function nextPage() {
+            if (pageNum >= pdfDoc.numPages) return;
+            pageNum++;
+            queueRenderPage(pageNum);
+        }
+
+        function zoomIn() {
+            scale += 0.2;
+            document.getElementById('zoomLevel').innerText = Math.round(scale * 100) + '%';
+            queueRenderPage(pageNum);
+        }
+
+        function zoomOut() {
+            if (scale <= 0.4) return;
+            scale -= 0.2;
+            document.getElementById('zoomLevel').innerText = Math.round(scale * 100) + '%';
+            queueRenderPage(pageNum);
+        }
+
+        // --- PDF Text Extraction (for LLM) ---
+        async function extractTextFromPDF() {
+            fullPdfText = "";
+            let textPromises = [];
+            
+            // Extract up to first 20 pages to prevent overloading memory/context for basic requests,
+            // though Gemini 2.5 flash can handle much more. 
+            const maxPages = Math.min(pdfDoc.numPages, 30); 
+            
+            for (let i = 1; i <= maxPages; i++) {
+                textPromises.push(pdfDoc.getPage(i).then(page => page.getTextContent()));
+            }
+            
+            const textContents = await Promise.all(textPromises);
+            
+            textContents.forEach(content => {
+                const strings = content.items.map(item => item.str);
+                fullPdfText += strings.join(" ") + "\n\n";
+            });
+            console.log("Extracted text length:", fullPdfText.length);
+        }
+
+        // --- PDF Manipulation (Combine/Split) ---
+        async function combineAndDownloadPDF() {
+            const input = document.getElementById('pageSelectionInput').value;
+            if (!input.trim()) {
+                alert("Please enter page numbers (e.g., '1, 5' or '1-3').");
+                return;
+            }
+            if (!currentArrayBuffer) {
+                alert("Please upload a PDF first.");
+                return;
+            }
+
+            try {
+                // Parse input like "1, 5, 8-10"
+                const pageIndices = new Set();
+                const parts = input.split(',');
+                
+                for (const part of parts) {
+                    const cleanPart = part.trim();
+                    if (cleanPart.includes('-')) {
+                        const [start, end] = cleanPart.split('-').map(n => parseInt(n.trim()));
+                        if (isNaN(start) || isNaN(end)) throw new Error("Invalid range format");
+                        for (let i = start; i <= end; i++) pageIndices.add(i - 1); // pdf-lib is 0-indexed
+                    } else {
+                        const num = parseInt(cleanPart);
+                        if (isNaN(num)) throw new Error("Invalid page number");
+                        pageIndices.add(num - 1);
+                    }
+                }
+
+                const sortedIndices = Array.from(pageIndices).sort((a, b) => a - b);
+                
+                // Validate bounds
+                if (sortedIndices[0] < 0 || sortedIndices[sortedIndices.length - 1] >= pdfDoc.numPages) {
+                    alert(`Invalid page numbers. Document has ${pdfDoc.numPages} pages.`);
+                    return;
+                }
+
+                // Create new PDF
+                const pdfLibDoc = await PDFLib.PDFDocument.load(currentArrayBuffer);
+                const newPdf = await PDFLib.PDFDocument.create();
+                const copiedPages = await newPdf.copyPages(pdfLibDoc, sortedIndices);
+                
+                copiedPages.forEach(page => newPdf.addPage(page));
+                
+                // Save and Download
+                const pdfBytes = await newPdf.save();
+                const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `Combined_${originalFileName}`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                appendMessage("system", "Successfully combined and exported selected pages!");
+
+            } catch (error) {
+                console.error("Error manipulating PDF:", error);
+                alert("Failed to create new PDF. Please check your page numbers format.");
+            }
+        }
+
+        // --- Gemini Chatbot Integration ---
+        function getApiKey() {
+            const key = document.getElementById('apiKeyInput').value.trim();
+            if (!key) {
+                alert("Please enter your Gemini API Key in the top right corner.");
+                return null;
+            }
+            return key;
+        }
+
+        function appendMessage(sender, text) {
+            const chatMessages = document.getElementById('chatMessages');
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'flex gap-3 ' + (sender === 'user' ? 'flex-row-reverse' : '');
+            
+            const iconHTML = sender === 'user' 
+                ? `<div class="w-6 h-6 rounded-full bg-blue-600 shrink-0 flex items-center justify-center text-white text-xs mt-1"><i class="fa-solid fa-user"></i></div>`
+                : `<div class="w-6 h-6 rounded-full bg-accent shrink-0 flex items-center justify-center text-white text-xs mt-1"><i class="fa-solid fa-robot"></i></div>`;
+            
+            const bubbleClass = sender === 'user'
+                ? 'bg-blue-600 text-white rounded-lg rounded-tr-none p-3 text-sm max-w-[85%] break-words shadow-sm'
+                : 'bg-gray-100 rounded-lg rounded-tl-none p-3 text-sm text-gray-800 max-w-[85%] break-words prose prose-sm prose-p:leading-relaxed prose-pre:bg-gray-200 prose-pre:text-gray-800';
+            
+            // If system message, apply markdown
+            const content = sender === 'user' ? text : marked.parse(text);
+
+            msgDiv.innerHTML = `
+                ${iconHTML}
+                <div class="${bubbleClass}">${content}</div>
+            `;
+            
+            chatMessages.appendChild(msgDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function showTypingIndicator() {
+            const chatMessages = document.getElementById('chatMessages');
+            const msgDiv = document.createElement('div');
+            msgDiv.id = 'typingIndicator';
+            msgDiv.className = 'flex gap-3';
+            msgDiv.innerHTML = `
+                <div class="w-6 h-6 rounded-full bg-accent shrink-0 flex items-center justify-center text-white text-xs mt-1"><i class="fa-solid fa-robot"></i></div>
+                <div class="bg-gray-100 rounded-lg rounded-tl-none p-3 text-sm text-gray-800 flex items-center gap-1">
+                    <div class="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"></div>
+                    <div class="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 0.2s"></div>
+                    <div class="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 0.4s"></div>
+                </div>
+            `;
+            chatMessages.appendChild(msgDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function removeTypingIndicator() {
+            const indicator = document.getElementById('typingIndicator');
+            if (indicator) indicator.remove();
+        }
+
+        async function callGeminiAPI(promptText, customSystemInstruction = "You are an expert AI research assistant. Format your responses beautifully using markdown.") {
+            const apiKey = getApiKey();
+            if (!apiKey) return;
+
+            showTypingIndicator();
+            const buttons = ['translateBtn', 'summarizeBtn', 'keyPointsBtn', 'quizBtn', 'sendBtn'];
+            buttons.forEach(id => {
+                const btn = document.getElementById(id);
+                if(btn) btn.disabled = true;
+            });
+
+            // Using the requested Gemini 2.5 Flash model
+            const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            
+            try {
+                // Implementing exponential backoff logic as per standard practice, simplified for single request
+                const payload = {
+                    contents: [{ parts: [{ text: promptText }] }],
+                    systemInstruction: {
+                        parts: [{ text: customSystemInstruction }]
+                    },
+                    generationConfig: {
+                        temperature: 0.3
+                    }
+                };
+
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    const errData = await response.json();
+                    throw new Error(errData.error?.message || 'API Request Failed');
+                }
+
+                const data = await response.json();
+                const responseText = data.candidates?.[0]?.content?.parts?.[0]?.text || "Sorry, I couldn't generate a response.";
+                
+                removeTypingIndicator();
+                appendMessage('system', responseText);
+
+            } catch (error) {
+                console.error("Gemini API Error:", error);
+                removeTypingIndicator();
+                appendMessage('system', `**Error:** Failed to connect to Gemini API. Please check your API key and try again.\n\nDetails: ${error.message}`);
+            } finally {
+                buttons.forEach(id => {
+                    const btn = document.getElementById(id);
+                    if(btn) btn.disabled = false;
+                });
+            }
+        }
+
+        function translateFullDocument() {
+            if (!fullPdfText) {
+                alert("Please upload a PDF first or wait for it to finish processing.");
+                return;
+            }
+            appendMessage('user', "Please translate the uploaded document into Pakistani Urdu.");
+            
+            // Limit text sent to avoid extremely massive payloads if PDF is huge
+            const textToSend = fullPdfText.length > 50000 
+                ? fullPdfText.substring(0, 50000) + "\n\n[Note: Document truncated due to length limits. Ask for specific pages if needed.]"
+                : fullPdfText;
+
+            const prompt = `Translate the following text extracted from a PDF document into Pakistani Urdu. Ensure the translation is accurate and easy to read. Maintain formatting where possible.\n\n--- Document Text ---\n${textToSend}`;
+            callGeminiAPI(prompt, "You are an expert translator specializing in translating academic and professional documents into clear, natural-sounding Pakistani Urdu. Format your responses using markdown.");
+        }
+
+        function summarizeDocument() {
+            if (!fullPdfText) return alert("Please upload a PDF first.");
+            appendMessage('user', "Please provide a comprehensive summary of this document.");
+            
+            const textToSend = fullPdfText.length > 50000 ? fullPdfText.substring(0, 50000) + "..." : fullPdfText;
+            const prompt = `Provide a comprehensive, well-structured summary of the following document. Include a main thesis/overview and bullet points for key arguments, findings, or sections.\n\n--- Document Text ---\n${textToSend}`;
+            callGeminiAPI(prompt, "You are an expert AI research assistant. Provide clear, concise, and accurate document summaries formatted beautifully in markdown.");
+        }
+
+        function extractKeyPoints() {
+            if (!fullPdfText) return alert("Please upload a PDF first.");
+            appendMessage('user', "Extract the key points and concepts from this document.");
+            
+            const textToSend = fullPdfText.length > 50000 ? fullPdfText.substring(0, 50000) + "..." : fullPdfText;
+            const prompt = `Analyze the following document and extract the top 5-7 most important concepts, entities, or terms. Provide a short, one or two sentence explanation for each.\n\n--- Document Text ---\n${textToSend}`;
+            callGeminiAPI(prompt, "You are a data extraction specialist. Output the requested key points clearly using markdown bullet points, bold text for the concepts, and keep explanations concise.");
+        }
+
+        function generateQuiz() {
+            if (!fullPdfText) return alert("Please upload a PDF first.");
+            appendMessage('user', "Generate a short quiz based on this document to test my knowledge.");
+            
+            const textToSend = fullPdfText.length > 50000 ? fullPdfText.substring(0, 50000) + "..." : fullPdfText;
+            const prompt = `Create a 3-question multiple-choice quiz based on the key concepts in this document. Format it nicely. Provide the questions and options (A, B, C, D) first. Then, provide the correct answers with a brief explanation at the very end.\n\n--- Document Text ---\n${textToSend}`;
+            callGeminiAPI(prompt, "You are an educational AI tutor. Create engaging, accurate, and tricky multiple-choice quizzes based on the provided text. Use markdown for clean formatting.");
+        }
+
+        function sendChatMessage() {
+            const inputEl = document.getElementById('chatInput');
+            const message = inputEl.value.trim();
+            if (!message) return;
+            
+            if (!fullPdfText) {
+                alert("Please upload a PDF first.");
+                return;
+            }
+
+            appendMessage('user', message);
+            inputEl.value = '';
+
+            const textToSend = fullPdfText.length > 30000 
+                ? fullPdfText.substring(0, 30000) + "..."
+                : fullPdfText;
+
+            const prompt = `Based on the following document context, answer the user's prompt. Reply in Pakistani Urdu if the user asks for a translation, otherwise reply in the language the user asked.\n\n--- Document Context ---\n${textToSend}\n\n--- User Prompt ---\n${message}`;
+            callGeminiAPI(prompt);
+        }
+
+        // Enter key in chat input
+        document.getElementById('chatInput').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendChatMessage();
+            }
+        });
+    </script>
+</body>
+</html>
